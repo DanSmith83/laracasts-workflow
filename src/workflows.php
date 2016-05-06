@@ -1,9 +1,14 @@
 <?php
 
+use Symfony\Component\DomCrawler\Crawler;
+
 /**
  * Class Workflows
  */
-class Workflows {
+class Workflows
+{
+
+    private $baseUrl = 'https://laracasts.com/';
 
     /**
      * @param $query
@@ -21,9 +26,18 @@ class Workflows {
      * @param $query
      * @return string
      */
+    private function getUrl($query)
+    {
+        return $query == 'latest' ? $this->latestUrl() : $this->searchUrl($query);
+    }
+
+    /**
+     * @param $query
+     * @return string
+     */
     private function getHtml($query)
     {
-        $html = file_get_contents(sprintf('https://laracasts.com/search?q=%s&q-where=lessons', $query));
+        $html = file_get_contents($this->getUrl($query));
 
         return $html;
     }
@@ -33,38 +47,45 @@ class Workflows {
      */
     private function getResults($html)
     {
-        $parser  = new \Symfony\Component\DomCrawler\Crawler($html);
+        $parser  = new Crawler($html);
         $results = [];
 
-        $parser->filter('span.Lesson-List__title')->each(function (\Symfony\Component\DomCrawler\Crawler $node) use (
-            &$results
-        ) {
+        $parser->filter('span.Lesson-List__title')->each(function (Crawler $node) use (&$results) {
 
             $link = $node->children()->attr('href');
 
-            if (preg_match('/lessons\/(.+)/', $link, $matches)) {
-                $lesson = ['slug' => $matches[1], 'type' => 'lesson'];
+            if ($lesson = $this->getEpisode($link)) {
+                $results[] = $lesson;
             } else {
 
-                $link = $node->children()->eq(1)->attr('href');
-
-                if (preg_match('/series\/(.+)\/episodes\/(\d+)/', $link, $matches)) {
-
-                    $array['series'][$matches[1]][] = (int)$matches[2];
-
-                    $lesson = [
-                        'slug'    => $matches[1],
-                        'type'    => 'series',
-                        'episode' => $matches[2],
-                        'series'  => trim($node->children()->eq(1)->text())
-                    ];
+                if ($lesson = $this->getSeriesEpisode($node)) {
+                    $results[] = $lesson;
                 }
             }
-
-            $results[] = $lesson;
         });
 
         return $results;
+    }
+
+
+    /**
+     * @param Crawler $node
+     * @return array|bool
+     */
+    private function getSeriesEpisode(Crawler $node)
+    {
+        $link = $node->children()->eq(1)->attr('href');
+
+        if (preg_match('/series\/(.+)\/episodes\/(\d+)/', $link, $matches)) {
+            return [
+                'slug'    => $matches[1],
+                'type'    => 'series',
+                'episode' => $matches[2],
+                'series'  => trim($node->children()->eq(1)->text())
+            ];
+        }
+
+        return false;
     }
 
     /**
@@ -75,18 +96,66 @@ class Workflows {
         $items = new SimpleXMLElement('<items></items>');
 
         foreach ($results as $result) {
-            $item        = $items->addChild('item');
-            $item->title = ucfirst(str_replace('-', ' ', $result['slug']));
+            $item = $items->addChild('item');
 
             if ($result['type'] == 'lesson') {
-                $item->addAttribute('arg', sprintf('https://laracasts.com/lessons/%s', $result['slug']));
+                $item->title = ucfirst(str_replace('-', ' ', $result['slug']));
+                $item->addAttribute('arg', $this->episodeUrl($result));
             } else {
-                $item->addAttribute('arg',
-                    sprintf('https://laracasts.com/series/%s/episodes/%s', $result['slug'], $result['episode']));
-                $item->subtitle = $result['series'];
+                $item->addAttribute('arg', $this->seriesUrl($result));
+                $item->title    = $result['series'];
+                $item->subtitle = ucfirst(str_replace('-', ' ', $result['slug']));
             }
         }
 
         return $items;
+    }
+
+    /**
+     * @param $link
+     * @return array|bool
+     */
+    private function getEpisode($link)
+    {
+        if (preg_match('/lessons\/(.+)/', $link, $matches)) {
+            return ['slug' => $matches[1], 'type' => 'lesson'];
+        }
+
+        return false;
+    }
+
+    /**
+     * @return string
+     */
+    private function latestUrl()
+    {
+        return sprintf('%slessons', $this->baseUrl);
+    }
+
+    /**
+     * @param $query
+     * @return string
+     */
+    private function searchUrl($query)
+    {
+        return sprintf('%ssearch?q=%s&q-where=lessons', $this->baseUrl, $query);
+    }
+
+    /**
+     * @param $result
+     * @return string
+     */
+    private function seriesUrl($result)
+    {
+        return sprintf('https://laracasts.com/series/%s/episodes/%s', $result['slug'], $result['episode']);
+    }
+
+    /**
+     * @param $result
+     * @return string
+     */
+    private function episodeUrl($result)
+    {
+        return sprintf('https://laracasts.com/lessons/%s', $result['slug']);
     }
 }
