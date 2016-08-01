@@ -28,7 +28,7 @@ class Workflows
      */
     private function getUrl($query)
     {
-        return $query == 'latest' ? $this->latestUrl() : $this->searchUrl($query);
+        return $query == '' ? $this->latestUrl() : $this->searchUrl($query);
     }
 
     /**
