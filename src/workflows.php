@@ -14,7 +14,7 @@ class Workflows
      * @param $query
      * @return mixed
      */
-    public function search($query)
+    public function search($query = null)
     {
         $html    = $this->getHtml($query);
         $results = $this->getResults($html);
@@ -26,9 +26,14 @@ class Workflows
      * @param $query
      * @return string
      */
-    private function getUrl($query)
+    private function getUrl($query = null)
     {
-        return $query == '' ? $this->latestUrl() : $this->searchUrl($query);
+        if ( ! $query)
+        {
+            return $this->latestUrl();
+        }
+
+        return $this->searchUrl($query);
     }
 
     /**
